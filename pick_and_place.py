@@ -12,12 +12,10 @@ from tf.transformations import *
 from geometry_msgs.msg import Quaternion
 
 error = 0.05 # error from the camera, since it is tilted
-suctionCup = 0.056 # length from endeffector to end of suction cup
+suctionCup = 0.048 # length from endeffector to end of suction cup
 
 def endPos(msg,rot): 
-    """ 
-    (trans,rot) = listener.lookupTransform('/panda_link0','/panda_suction_end', rospy.Time(0))
-     """# Copying for simplicity
+    # Copying for simplicity
     position = msg.pose.position
     quat = msg.pose.orientation
     #Find difference between camera and suction end
@@ -26,7 +24,7 @@ def endPos(msg,rot):
     diff.header.stamp = rospy.Time(0)
     diff.point.x=position.x  #z
     diff.point.y=position.y #x
-    diff.point.z=position.z #-error #y 
+    diff.point.z=position.z #y 
     p=listener.transformPoint("panda_suction_end",diff)
 
     pickPoint=PointStamped()
@@ -48,39 +46,34 @@ def endPos(msg,rot):
     pe.pose.position.y = p.point.y
     pe.pose.position.z = p.point.z
     return pe     
-
-def callback(msg):
     
-    rospy.loginfo("Received at goal message!")
-    rospy.loginfo("Timestamp: " + str(msg.header.stamp))
-    rospy.loginfo("frame_id: " + str(msg.header.frame_id))
-    
-    while not rospy.is_shutdown():
-        try:
-            (trans,rot) = listener.lookupTransform('/panda_link0','/panda_suction_end', rospy.Time(0))
-            print(trans)
-            endPosition = endPos(msg,rot)
-            #print(endPosition)
-            value = input("Enter 1 to get coordinates:\n")
-            value = int(value)
-            if value == 1:
-                rospy.loginfo(endPosition)
-                check = input("Enter 2 to move robot to coordinates:\n")
-                check = int(check)
-                if check == 2:
-                    pub.publish(endPosition)
-                else: 
-                    break
-            else: 
-                break
-        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-            print("look up fail")
-            continue
 
 if __name__ == '__main__':
     pub = rospy.Publisher('keyboard', PoseStamped, queue_size=10)
     rospy.init_node('tf_listener')
     listener = tf.TransformListener()
-    rate = rospy.Rate(10.0)
-    rospy.Subscriber("/pandaposition", PoseStamped, callback)
-    rospy.spin()
+    while not rospy.is_shutdown():
+        value = input("Enter 1 to get coordinates:\n")
+        value = int(value)
+        if value == 1:
+            print("Kominn i 1")
+            try:
+                print("Before trans")
+                (trans,rot) = listener.lookupTransform('/panda_link0','/panda_suction_end', rospy.Time(0))
+                print("after ")
+                msg = rospy.wait_for_message("/pandaposition", PoseStamped)
+                rospy.loginfo("Received at goal message!")
+                endPosition = endPos(msg,rot) # transforming
+                #print(endPosition)
+            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                print("look up fail")    
+
+            rospy.loginfo(endPosition)
+            check = input("Enter 2 to move robot to coordinates:\n")
+            check = int(check)
+            if check == 2:
+                pub.publish(endPosition)
+            else: 
+                continue
+        else:
+            continue
