@@ -25,14 +25,10 @@ timeend = 0.0
 elapsed = 0.0
 fpsAvg = np.zeros(10)
 wh = 416
-confThrsh = 0.5
+confThrsh = 0.35
 NMSThrs = 0.3
 # Font for puttext funcion
 font = cv2.FONT_HERSHEY_PLAIN
-
-
-# Print "Hello!" to terminal
-print ("Hello!")
 
 # Initialize the ROS Node named 'opencv_example', allow multiple nodes to be run with this name
 rospy.init_node('pandacamera', anonymous=True)
@@ -43,7 +39,7 @@ rospy.loginfo("Starting depth subscriber!")
 # Initialize the CvBridge class
 bridge = CvBridge()
 ERRORY = 75 #pxl
-ERRORX = -40
+ERRORX = -20
 # Gets fps, uses average over 5 values
 def getFps(start, end, nrAvg):
     end = time.time()
@@ -85,11 +81,10 @@ def findObjects(frame,msg):
     
     idc = cv2.dnn.NMSBoxes(bbox, conf, confThrsh, NMSThrs)
     for i in idc:
-        
         i = i[0]
         box = bbox[i]
         x,y,w,h = box[0], box[1], box[2], box[3]
-        if(w > (0.90*wT) or h > (0.90*hT)):
+        if(w > (0.80*wT) or h > (0.80*hT)):
             continue
         else:
             xx = int(x+(w/2))# Center point of object
@@ -120,7 +115,7 @@ def getFps(start, end, nrAvg):
     end = time.time()
     elapsed = end - start
     
-    fpsAvg[nrAvg] = int(1 / elapsed)
+    fpsAvg[nrAvg] = float(1 / elapsed)
     nrAvg +=1
     start = time.time()
     if nrAvg == 9:
@@ -185,12 +180,12 @@ def image_callback(img_msg):
     try:
         pub.publish(pos)
     except:
-        print("Nothing found")
+        rospy.logerr("Nothing found")
     # Time and fps calculated
     fps, nrAvg, timestart, timeend = getFps(timestart, timeend, nrAvg)
     hT, wT, c = cv_image.shape
     # Text written, numerical value is seperate from text to keep the text fixed in place
-    fpsText = "Fps:%.1f " %(fps)
+    fpsText = "Fps:%.3f " %(fps)
     #print(fpsText)
     cv2.putText(cv_image,fpsText,(10,675), font, 2,(255,255,255),2,cv2.LINE_4)
     framesize = "%.0fx%.0f" %(wT,hT)
