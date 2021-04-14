@@ -25,8 +25,14 @@ timeend = 0.0
 elapsed = 0.0
 fpsAvg = np.zeros(10)
 wh = 416
-confThrsh = 0.35
+confThrsh = 0.05
 NMSThrs = 0.3
+boolNothing = 0
+#The box bounderies....
+XMAX = 0.38
+XMIN = 0.28
+YMAX = 0.137
+YMIN = -0.096
 # Font for puttext funcion
 font = cv2.FONT_HERSHEY_PLAIN
 
@@ -92,6 +98,8 @@ def findObjects(frame,msg):
             cv2.rectangle(frame, (x,y), (x+w,y+h), (0,255,255), 2)
             #cv2.putText(frame, f'{classNames[classIdx[i]].upper()} {conf[i]*100}%', (x,y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255, 255), 2)
             center = (xx,yy)
+            conftext = "conf:%.3f" %(conf[i]*100)
+            cv2.putText(frame,conftext,(x,y), font, 1,(255,100,255),2,cv2.LINE_4)
             # Puts in a circle where the center of the object is 
             cv2.circle(frame, center, 5, (255, 0, 0), 2)
             # Get the depth in mm
@@ -160,13 +168,13 @@ def convert_depth_to_phys_coord_using_realsense(x, y, depth, cameraInfo):
   return result[2], -result[0], -result[1]
 
 # Define a callback for the Image message
-def image_callback(img_msg):
+def image_callback(img_msg): 
     # log some info about the image topic
     #rospy.loginfo(img_msg.header)
     # Try to convert the ROS Image message to a CV2 Image
     pub = rospy.Publisher('pandaposition', PoseStamped, queue_size=1)
-    rate = rospy.Rate(1) # 10hz#
-    global timestart, timeend, nrAvg, counter
+    rate = rospy.Rate(25) # 10hz#
+    global timestart, timeend, nrAvg, counter, boolNothing
     aligned_depth_msg = rospy.wait_for_message("/camera/aligned_depth_to_color/image_raw", Image)
     
     try:
@@ -179,8 +187,11 @@ def image_callback(img_msg):
     #rospy.loginfo(pos)
     try:
         pub.publish(pos)
+        boolNothing = 0 
     except:
-        rospy.logerr("Nothing found")
+        boolNothing = boolNothing + 1
+        if(boolNothing == 1):
+            rospy.logerr("Nothing found")
     # Time and fps calculated
     fps, nrAvg, timestart, timeend = getFps(timestart, timeend, nrAvg)
     hT, wT, c = cv_image.shape
@@ -195,7 +206,7 @@ def image_callback(img_msg):
     cv2.putText(cv_image,framesize,(10,715), font, 2,(255,0,255),2,cv2.LINE_4)
     # Show the converted image
     show_image(cv_image)
-
+    cv_image = 0
 # Class names
 classesFile = 'coco.names'
 classNames = []
@@ -213,7 +224,7 @@ net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 aligned_info = rospy.wait_for_message("/camera/aligned_depth_to_color/camera_info", CameraInfo)
 
 # Initalize a subscriber to the "/camera/rgb/image_raw" topic with the function "image_callback" as a callback
-sub_image = rospy.Subscriber("/camera/color/image_raw", Image, image_callback)
+sub_image = rospy.Subscriber("/camera/color/image_raw", Image, image_callback, queue_size = 1, buff_size=2**24)
     
 # Initialize an OpenCV Window named "Image Window"
 cv2.namedWindow("Color-image Window", 1)

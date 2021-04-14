@@ -3,6 +3,7 @@ import roslib
 roslib.load_manifest('auto_labeller')
 import rospy
 import math
+from math import radians
 import tf
 import geometry_msgs.msg
 from tf2_geometry_msgs import PointStamped
@@ -22,6 +23,7 @@ import sys
 import copy
 import moveit_commander
 import moveit_msgs.msg
+from random import random
 
 moveit_commander.roscpp_initialize(sys.argv)
 # Instantiate CvBridge
@@ -31,7 +33,7 @@ image_color = "/camera/color/image_raw"
 folder_path = "/home/lab/Pictures/test/"
 counter = 0
 error = 0.05 # error from the camera, since it is tilted
-suctionCup = 0.039 #decreas if want to go further down 0.034 length from endeffector to end of suction cup red suction 5.5cm
+suctionCup = 0.054 #decreas if want to go further down 0.034 length from endeffector to end of suction cup red suction 5.5cm
 # green 4.5cm
 def endPos(msg,rot): 
     # Copying for simplicity
@@ -54,16 +56,6 @@ def endPos(msg,rot):
     pickPoint.point.z=p.point.z-suctionCup
     p = listener.transformPoint("panda_link0",pickPoint)
     
-    """ pe = PoseStamped()
-    pe.header.frame_id = "/panda_link0"
-    pe.header.stamp = rospy.Time.now()
-    pe.pose.orientation.x = rot[0]
-    pe.pose.orientation.y = rot[1]
-    pe.pose.orientation.z = rot[2]
-    pe.pose.orientation.w = rot[3]
-    pe.pose.position.x = p.point.x
-    pe.pose.position.y = p.point.y
-    pe.pose.position.z = p.point.z """
     pose_target = geometry_msgs.msg.Pose()
     pose_target.orientation.x = rot[0]
     pose_target.orientation.y = rot[1]
@@ -99,28 +91,51 @@ def homePos():
     group.set_named_target("ready")
     plan1 = group.plan()
     group.go(wait=True)
+
+def rotate():
+    group.clear_pose_targets()
+    value = float(random()*radians(70)) # possible to go from -166 to 166
+    #print "Value", value
+    group_variable_values = group.get_current_joint_values()
+    #print "============ Joint values: ", group_variable_values
+    group_variable_values[6] = value
+    group.set_joint_value_target(group_variable_values)
+
+    plan1 = group.plan()
+    group.go(wait=True)
+    #print "============ Waiting while RVIZ displays plan2..."
+    rospy.sleep(0.3)
     
 
-def moveToOtherSide(pos):
+def moveToOtherSide(pos, moveBottle):
     #pos.position.x = pos.position.x
     pos.position.y = -1*pos.position.y
-    pos.position.z = pos.position.z+0.02
-    moveAbove(pos)
+    pos.position.z = pos.position.z+0.01
+    if(moveBottle):
+        moveAbove(pos,False)
+    pos.position.z = pos.position.z-0.01
+    return pos
     #pub.publish(pe)
     #currPos(pe)
 
-def moveAbove(pose_target):
+def moveAbove(pose_target,drop):
     before = pose_target.position.z
 
     pose_target.position.z = 0.30
     group.set_pose_target(pose_target)
     plan1 = group.plan()
     group.go(wait=True)
-
-    pose_target.position.z = before
-    group.set_pose_target(pose_target)
-    plan1 = group.plan()
-    group.go(wait=True)
+    if(drop==True):
+        pose_target.position.z = before+0.01
+        group.set_pose_target(pose_target)
+        plan1 = group.plan()
+        group.go(wait=True)
+        pose_target.position.z = pose_target.position.z-0.01
+    elif(drop==False):
+        pose_target.position.z = before
+        group.set_pose_target(pose_target)
+        plan1 = group.plan()
+        group.go(wait=True)
 
     """  before = pos.pose.position.z
     pos.pose.position.z = 0.30
@@ -140,6 +155,7 @@ if __name__ == '__main__':
     scene = moveit_commander.PlanningSceneInterface()
     group = moveit_commander.MoveGroupCommander("panda_arm")
     display_trajectory_publisher = rospy.Publisher('move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory, queue_size=10)
+    homePos()
     while not rospy.is_shutdown():
         value = input("Enter 1 to get coordinates:\n")
         value = int(value)
@@ -157,18 +173,33 @@ if __name__ == '__main__':
             check = input("Enter 2 to move robot to coordinates:\n")
             check = int(check)
             if check == 2:
-                captureImage("before")
+                captureImage("")
                 pubSuc.publish(Bool(True))
-                #pub.publish(endPosition)
-                moveAbove(endPosition)
+                moveAbove(endPosition, False)
                 rospy.sleep(1)
                 homePos()
-                moveToOtherSide(endPosition)
+                lastPos = moveToOtherSide(endPosition,True)
                 pubSuc.publish(Bool(False))
                 rospy.sleep(1)
-                homePos()
-                captureImage("after")
-                counter = counter+1
+                for i in range(10):
+                    try:
+                        counter = counter+1
+                        homePos() # Take photo in home pos
+                        captureImage("")
+                        moveAbove(lastPos, False)
+                        pubSuc.publish(Bool(True))
+                        homePos() # Take photo in home pos
+                        lastPos = moveToOtherSide(lastPos, False)
+                        moveAbove(lastPos, True)
+                        rotate()
+                        pubSuc.publish(Bool(False))
+                        if i == 9:
+                            homePos()
+                            captureImage("")
+                    except KeyboardInterrupt:
+                        print('Interrupted')
+                        break
+                
             else: 
                 continue
         else:
