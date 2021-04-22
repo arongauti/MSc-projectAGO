@@ -28,15 +28,11 @@ wh = 416
 confThrsh = 0.05
 NMSThrs = 0.3
 boolNothing = 0
-#The box bounderies....
-XMAX = 0.38
-XMIN = 0.28
-YMAX = 0.137
-YMIN = -0.096
+
 # Font for puttext funcion
 font = cv2.FONT_HERSHEY_PLAIN
 
-# Initialize the ROS Node named 'opencv_example', allow multiple nodes to be run with this name
+# Initialize the ROS Node named 'pandacamera', allow multiple nodes to be run with this name
 rospy.init_node('pandacamera', anonymous=True)
 
 # Print "Hello ROS!" to the Terminal and to a ROS Log file located in ~/.ros/log/loghash/*.log

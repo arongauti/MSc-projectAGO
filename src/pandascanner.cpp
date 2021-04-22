@@ -5,7 +5,7 @@
 
 }*/
 PandaScanner::PandaScanner(ros::NodeHandle* nh):
-  move_group_("panda_arm"),
+move_group_("panda_arm"),
   nh_(*nh)
 {
 robotSetup();
