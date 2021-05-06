@@ -1,4 +1,4 @@
-#!/usr/bin/env python  
+#!/usr/bin/env python2.7  
 import time
 import roslib
 roslib.load_manifest('auto_labeller')
@@ -178,14 +178,15 @@ if __name__ == '__main__':
         dt_string = now.strftime("%d-%m-%Y-%H:%M")
         # Create director
         dirName = folder_path + "/" + str(dt_string)  
-        try:
-            # Create target Directory
-            os.mkdir(dirName)
-            print("Directory " , dirName ,  " Created ") 
-            counter = 0
-        except:
-            print("Directory " , dirName ,  " already exists") 
+        
         if(empty == 0):
+            try:
+                # Create target Directory
+                os.mkdir(dirName)
+                print("Directory " , dirName ,  " Created ") 
+                counter = 0
+            except:
+                print("Directory " , dirName ,  " already exists") 
             captureImage("")
         value = input("Enter 1 to get coordinates 0 to take start img (HOMEPOS):\n")
         value = int(value)

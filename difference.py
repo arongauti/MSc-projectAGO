@@ -3,6 +3,7 @@ import os, os.path
 import glob
 import numpy as np
 from datetime import date
+import time
 #from skimage.metrics import structural_similarity
 from skimage.measure import compare_ssim
 #from findDifference import*
@@ -14,11 +15,11 @@ import imutils
 font = cv2.FONT_HERSHEY_PLAIN
 #path = "/Users/Aron Gauti/Documents/meis-myndgreining/frames"
 #folder = "niveacleansingmilk100" #skip
-#folder = "albertobalsam100" # skip 34 50 71 73 83 93
-folder = "niveaelastic100"
+folder = "All_IMG" # skip 34 50 71 73 83 93
+#folder = "niveacleansingmilk300"
 #folder = "niveatexture70"
 item = ""
-path = "/home/lab/Pictures/"+ folder
+path = "/home/lab/Pictures/data/"+ folder
 textpath = "/home/lab/Pictures/"
 # for i in os
 cv_img = []
@@ -54,13 +55,13 @@ def findDifference(imageA, imageB):
             (x, y, w, h) = cv2.boundingRect(c)
             #cv2.rectangle(imageA, (x, y), (x + w, y + h), (0, 0, 255), 2)
             cv2.rectangle(imageB, (x, y), (x + w, y + h), (0, 0, 255), 2)
-            cv2.imshow("Modified", imageB)
+            #cv2.imshow("Modified", imageB)
             diff = cv2.drawContours(imageB, cnts, -1, (0, 255, 0), 2)
-            cv2.imshow("Diff", diff)
+            #cv2.imshow("Diff", diff)
             return(x, y, w ,h)
     # show the output images
-    cv2.imshow("Original", imageA)
-    cv2.imshow("Modified", imageB)
+    #cv2.imshow("Original", imageA)
+    #cv2.imshow("Modified", imageB)
     
     #cv2.imshow("Thresh", thresh)
     cv2.waitKey(0)
@@ -75,7 +76,6 @@ def is_contour_bad(c):
 
 def main():
     x, y, w, h = 0, 0 ,0 ,0
-    empty = cv2.imread('/home/lab/Pictures/empty.png')
     #cv2.imshow("empty", empty)
     filenames = [img for img in glob.glob(path+"/*.png")]
     filenames.sort()
@@ -116,19 +116,19 @@ def main():
         contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         # Write to a txt file
         imgname = folder +"_" + item + str(i).zfill(4)
-        f= open(os.path.join(textFolder, imgname+".txt"),"w+")
+        f= open(os.path.join(imgFolder, imgname+".txt"),"w+")
         areacounter = 0
         # draw all contours
         cropped = cv2.drawContours(cropped, contours, -1, (0, 255, 0), 2)
-        cv2.imshow("Contours", cropped)
+        #cv2.imshow("Contours", cropped)
         
         for c in contours:
             c = cv2.convexHull(c)
             area = cv2.contourArea(c)
             
             if area > 30000 and area < 80000 and not is_contour_bad(c) :
-                print("area ", area)
-                print("is countour bad",is_contour_bad(c))
+                #print("area ", area)
+                #print("is countour bad",is_contour_bad(c))
                 areacounter = areacounter +1 
                 x,y,w,h= cv2.boundingRect(c)
                 #print("X %d XD %d Y %d YD %d" %(x, xd,y,yd))
@@ -178,7 +178,7 @@ def main():
             #f.write("0 %.9f %.9f %.9f %.9f\r\n" % (float(X),float(Y),float(W),float(H)))
             f.write("0 %.9f %.9f %.9f %.9f\r\n" % (float(XC/width),float(YC/height),float(W/width),float(H/height)))
             #print("0 %.9f %.9f %.9f %.9f\r\n" % (float(X/width),float(Y/height),float(W/width),float(H/height)))
-            cv2.imwrite(os.path.join(imgFolder, imgname+"box.png"), img_copy)
+            #cv2.imwrite(os.path.join(imgFolder, imgname+"box.png"), img_copy)
             cv2.imwrite(os.path.join(imgFolder, imgname+".png"), retImage)
             if((float(i)/float(len(cv_img)))<=0.75):
                 train.write(imgFolder + "/" +imgname + ".png\r\n")
@@ -187,25 +187,26 @@ def main():
         
         f.close() 
         #cv2.imwrite("{}/{}.png".format(dirName,i), img_copy)
-        if cv2.waitKey(0) & 0xFF == ord('q'): 
+        """ if cv2.waitKey(0) & 0xFF == ord('q'): 
             cv2.destroyAllWindows()
-            break 
+            break  """
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     today = date.today()
+    start = time.time()
     # Create director
-    dirName = path + "/" + str(today) 
-    textFolder = dirName + "/text"
+    dirName = path #+ "/" + str(today) 
     imgFolder = dirName + "/imgs" 
     try:
         # Create target Directory
-        os.mkdir(dirName)
-        os.mkdir(textFolder)
+        #os.mkdir(dirName)
         os.mkdir(imgFolder)
         print("Directory created ") 
     except:
         print("Directory already exists") 
     print("Start")
     main()
-    print("Finished")
+    end = time.time()
+    currTime=(end - start)
+    print("Finished - Time: ", currTime)

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 # Import ROS libraries and messages
 import cv2
 print(cv2.__version__)
@@ -148,8 +148,8 @@ def convert_depth_image(ros_image, xcor , ycor):
         #center_idx = np.array(depth_array.shape) / 2 # center[0] is y value and center[1] is x value
         depth = depth_array[ycor, xcor]/1000.0
         return depth
-    except CvBridgeError, e:
-        print e
+    except CvBridgeError as e:
+        print(e)
      #Convert the depth image to a Numpy array
     return depth
 
@@ -181,7 +181,7 @@ def image_callback(img_msg):
     
     try:
         cv_image = bridge.imgmsg_to_cv2(img_msg, "bgr8")
-    except CvBridgeError, e:
+    except CvBridgeError as e:
         rospy.logerr("CvBridge Error: {0}".format(e))
     
     #Find x and y coordinates in pixels
