@@ -1,5 +1,6 @@
 #!/usr/bin/env python2.7  
 import time
+from typing import Container
 import roslib
 roslib.load_manifest('auto_labeller')
 import rospy
@@ -30,14 +31,15 @@ from random import random, randrange, randint
 from datetime import date, datetime
 
 #The box bounderies....
-XMAX = 0.38
+XMAX = 0.36 # 0.38
+XMAX2 = 0.405
 XMIN = 0.28
 YMAX = 0.137
 YMIN = -0.096
 #Home position
-HOMEX = 0.3091
-HOMEY = 0.0048
-HOMEZ = 0.4234
+HOMEX = 0.42272#0.3091
+HOMEY = 0.00726#0.0048
+HOMEZ = 0.42751#0.4234
 
 locerror = 0.01 # max error in movement
 moveit_commander.roscpp_initialize(sys.argv)
@@ -48,7 +50,7 @@ image_color = "/camera/color/image_raw"
 folder_path = "/home/lab/Pictures/"
 counter = 0
 error = 0.05 # error from the camera, since it is tilted
-suctionCup = 0.04 #decreas if want to go further down 0.034 length from endeffector to end of suction cup red suction 5.5cm
+suctionCup = 0.14#0.045 #decreas if want to go further down 0.034 length from endeffector to end of suction cup red suction 5.5cm
 dropSpace = 0.015
 # green 4.5cm
 def endPos(msg,rot): 
@@ -80,116 +82,107 @@ def endPos(msg,rot):
     pose_target.position.x = p.point.x
     pose_target.position.y = p.point.y
     pose_target.position.z = p.point.z
-    if(pose_target.position.x> XMAX or pose_target.position.x < XMIN or pose_target.position.y> YMAX or pose_target.position.y < YMIN ):
-        rospy.loginfo("Error position out of bounderies")
-        homePos()
-        stateMachine(2)
-    return pose_target     
+    currentbox = [quat.x, quat.y, quat.z, quat.w]
+    print(currentbox)
+    return pose_target, quat     
     
-def captureImage(state):
+def captureImage(currentbox):
     global counter
-    #path = folder_path+"/"+state
     msg = rospy.wait_for_message(image_color, Image)
     color_frame = bridge.imgmsg_to_cv2(msg, "bgr8")
-    imgname = str(counter).zfill(4) + ".png" 
-    cv2.imwrite(os.path.join(dirName, imgname), color_frame)
+    imgname = str(counter).zfill(4)
+    f= open(os.path.join(dirName, imgname+".txt"),"w+")
+    if currentbox != 0:
+        f.write("0 %.9f %.9f %.9f %.9f\r\n" % (float(currentbox.x),float(currentbox.y),float(currentbox.z),float(currentbox.w)))
+    f.close() 
+    cv2.imwrite(os.path.join(dirName, imgname+".png"), color_frame)
     counter = counter+1
 
-def currPos(pos):
-    
-    pickPoint=PointStamped()
-    pickPoint.header.frame_id = "panda_suction_end"
-    p = listener.transformPoint("panda_link0",pickPoint)
-    x,y,z = pos.pose.position.x, pos.pose.position.y, pos.pose.position.z
-    while(not rospy.is_shutdown() and not(abs(x-p.point.x)<locerror and abs(y-p.point.y)<locerror and abs(z-p.point.z)<locerror)):
-        p = listener.transformPoint("panda_link0",pickPoint)
-        x,y,z = pos.pose.position.x, pos.pose.position.y, pos.pose.position.z
-        continue
-    print("Robot in right place")
-
 def homePos():
-    #global moveit_msgs
-    group.set_named_target("ready")
-    plan1 = group.plan()
-    group.go(wait=True)
-
-def rotate():
+    print("home pos")
     group.clear_pose_targets()
-    #value = float(random()*radians(70)) # possible to go from -166 to 166
-    value = float(radians(randint(-30, 120))) # 45 is straight
-    #print "Value", value
     group_variable_values = group.get_current_joint_values()
-    #print "============ Joint values: ", group_variable_values
-    group_variable_values[6] = value
-    print(radians(value))
+    group_variable_values[0] = float(radians(0))
+    group_variable_values[1] = float(radians(-25))
+    group_variable_values[2] = float(radians(1))
+    group_variable_values[3] = float(radians(-133))
+    group_variable_values[4] = float(radians(0))
+    group_variable_values[5] = float(radians(109))
+    group_variable_values[6] = float(radians(45)) # 45 is straight
     group.set_joint_value_target(group_variable_values)
-
     plan1 = group.plan()
     group.go(wait=True)
-    #print "============ Waiting while RVIZ displays plan2..."
-    rospy.sleep(0.3)
-    
 
-def moveToOtherSide(pos, moveBottle):
-    #pos.position.x = pos.position.x
-    pos.position.y = -1*pos.position.y
-    pos.position.z = pos.position.z+dropSpace
-    if(moveBottle):
-        moveAbove(pos,False)
-    pos.position.z = pos.position.z-dropSpace
-    return pos
-    #pub.publish(pe)
-    #currPos(pe)
 
-def moveAbove(pose_target,drop):
+def moveAbove(pose_target):
+    captureImage(currbox)
     before = pose_target.position.z
-
-    pose_target.position.z = 0.25
+    
+    pose_target.position.z = 0.20 + suctionCup
     group.set_pose_target(pose_target)
     plan1 = group.plan()
     group.go(wait=True)
-    if(drop==True):
-        pose_target.position.z = before+dropSpace
-        group.set_pose_target(pose_target)
-        plan1 = group.plan()
-        group.go(wait=True)
-        pose_target.position.z = pose_target.position.z-dropSpace
-    elif(drop==False):
-        downspace = 0 
-        pressure = rospy.wait_for_message("/vacuum/pressure", Float32)
-        while(pressure.data > -0.1):  
-            pose_target.position.z = before-downspace+0.01
+    downspace = 0 
+    pressure = rospy.wait_for_message("/vacuum/pressure", Float32)
+    pubSuc.publish(Bool(True))
+    while(pressure.data > -0.1):
+        if pose_target.position.z < 0.025+suctionCup or downspace > 0.035:
+            homePos()
+            rospy.sleep(0.3)
+            pressure = rospy.wait_for_message("/vacuum/pressure", Float32)
+            if pressure.data > -0.1:
+                pubSuc.publish(Bool(False))
+                return 0
+        else:        
+            pose_target.position.z = before-downspace
             group.set_pose_target(pose_target)
             plan1 = group.plan()
             group.go(wait=True)
-            pubSuc.publish(Bool(True))
-            pressure = rospy.wait_for_message("/vacuum/pressure", Float32)
-            downspace = downspace + 0.005
-            if pose_target.position.z < 0.05:
-                break
-        pose_target.position.z = before+downspace-0.01
+            downspace = downspace + 0.003
+        pressure = rospy.wait_for_message("/vacuum/pressure", Float32)
+        
+        
+    
+    pose_target.position.z = before+downspace
+    return 1
 
-def moveToOtherBox(currpos):
+def moveToOtherBox(currpos): #move the item that is picked to a "locked" location...
     homePos()
-    currpos.position.x = 0.38
-    currpos.position.y = -0.375
-    currpos.position.z = 0.30
+    currpos.position.x = 0.45
+    currpos.position.y = -0.42
+    currpos.position.z = 0.43
+    currpos.orientation.x = 0.99999
+    currpos.orientation.y = 0.006
+    currpos.orientation.z = 0.008
+    currpos.orientation.w = 0.007
     group.set_pose_target(currpos)
     plan1 = group.plan()
     group.go(wait=True)
     pubSuc.publish(Bool(False))
 
 def stateMachine(currState):
-    global endPosition, start
-    if currState == 1:
-        captureImage("")
-        value =0
+    global endPosition, start, currbox, dirName
+    if currState == 0:
+        folder = ""
+        print("Create new dir")
+        folder = raw_input("Folder name\n") # user creates a folder
+        dirName = folder_path + "/" + folder
+        try:
+            # Create target Directory
+            os.mkdir(dirName)
+            print("Directory " , dirName ,  " Created ") 
+            counter = 0
+        except:
+            print("Directory " , dirName ,  " already exists") 
+        return 1
+    elif currState == 1:
+        #captureImage("")
+        value = 0
         while value != 2: 
             value = input("Enter 2 to get coordinates:\n")
             value = int(value)
-        captureImage("")
-        stateMachine(value)
-    elif currState == 2:
+        return value
+    elif currState == 2: 
         currPoint=PointStamped()
         currPoint.header.frame_id = "panda_suction_end"
         home = listener.transformPoint("panda_link0",currPoint)
@@ -198,66 +191,59 @@ def stateMachine(currState):
                 (trans,rot) = listener.lookupTransform('/panda_link0','/panda_suction_end', rospy.Time(0))
                 msg = rospy.wait_for_message("/pandaposition", PoseStamped)
                 rospy.loginfo("Received at goal message!")
-                endPosition = endPos(msg,rot) # transforming
+                if(msg.pose.position.x == 0 and msg.pose.position.y == 0 and msg.pose.position.z == 0 ):
+                    return 6
+                endPosition, currbox = endPos(msg,rot) # transforming
                 rospy.loginfo(endPosition)
                 if endPosition == "None":
-                    stateMachine(2)
+                    
+                    return 2
                 else: 
-                    stateMachine(3)
+                    emptycount = 0
+                    return 3
                 #print(endPosition)
             except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                 print("look up fail")    
-            
-            value = input("Enter 3 to move robot to coordinates, 0 to get new:\n")
-            value = int(value)
-            if (value == 3):
-                stateMachine(value)
-            else:
-                stateMachine(2)
         else:
             homePos()
-            stateMachine(2)
-            print("robot not in home pos")
+            return 2
 
     elif currState == 3:
         start = time.time()
-        moveAbove(endPosition, False)
+        pick=moveAbove(endPosition)
+        if pick == 0:
+            return 2
         rospy.sleep(0.2)
         homePos()
-        stateMachine(4)        
+        return 4
+        #stateMachine(4)        
         
     elif currState == 4:
         moveToOtherBox(endPosition)
         homePos()
         rospy.sleep(2)
-        captureImage("")
         end = time.time()
         rospy.loginfo("TIME:")
         rospy.loginfo(end - start)
-        stateMachine(2)
-
-        """ lastPos = moveToOtherSide(endPosition,True)
-        pubSuc.publish(Bool(False))
-        rospy.sleep(0.1)
-        homePos() # Take photo in home pos
-        captureImage("")
-        end = time.time()
-        rospy.loginfo("TIME:")
-        rospy.loginfo(end - start)
-        stateMachine(2)
-
-        value = input("Enter 1 to create new dir and 2 to add to curr dir:\n")
-        value = int(value)
-        if value == 1:
-            stateMachine(1)
-        elif value == 2:
-            stateMachine(2) """
+        return 2
     elif currState == 5:
         print(currState)
     elif currState == 6:
         print(currState)
+        exitstate = -1
+        homePos()
+        pubSuc.publish(Bool(False))
+        captureImage(0)
+        while exitstate != 0: 
+            exitstate = input("Enter 0 to begin again and create new directory:\n")
+            exitstate = int(exitstate)
+        print(exitstate)
+        return 0
+        
+        
 
 if __name__ == '__main__':
+    emptycount = 0
     #rostopic pub  std_msgs/Bool true --once
     pubSuc = rospy.Publisher('/vacuum/set_suction_on', Bool, queue_size=1) # Talk to the festo ovem suction cup
     rospy.init_node('pick_and_place')
@@ -267,21 +253,16 @@ if __name__ == '__main__':
     group = moveit_commander.MoveGroupCommander("panda_arm")
     display_trajectory_publisher = rospy.Publisher('move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory, queue_size=10) # Talks to the moveit motion planner
     homePos()
-    while not rospy.is_shutdown():
-        empty = input("Take image of an empty bin. Enter 1 to capture it\n")
-        empty = int(empty)
-        now = datetime.now()
-        # dd/mm/YY H:M:S
-        dt_string = now.strftime("%d-%m-%Y-%H:%M")
-        # Create director
-        dirName = folder_path + "/" + str(dt_string)  
-        try:
-            # Create target Directory
-            os.mkdir(dirName)
-            print("Directory " , dirName ,  " Created ") 
-            counter = 0
-        except:
-            print("Directory " , dirName ,  " already exists") 
-        stateMachine(empty)
+    empty = input("Enter 0 to start the statemachine\n")
+    empty = int(empty)
+    now = datetime.now()
+    # dd/mm/YY H:M:S
+    dt_string = now.strftime("%d-%m-%Y-%H:%M")
+    if empty == 0:
+        currstate = stateMachine(empty)
 
+    while not rospy.is_shutdown():
+        currstate = stateMachine(currstate)
+        
+            
 
