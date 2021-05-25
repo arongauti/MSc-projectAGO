@@ -113,7 +113,7 @@ def homePos():
 
 def rotate():
     group.clear_pose_targets()
-    #value = float(random()*radians(70)) # possible to go from -166 to 166
+    
     value = float(radians(randint(-30, 120))) # 45 is straight
     #print "Value", value
     group_variable_values = group.get_current_joint_values()

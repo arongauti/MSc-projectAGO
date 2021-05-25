@@ -29,7 +29,7 @@ timeend = 0.0
 elapsed = 0.0
 fpsAvg = np.zeros(10)
 wh = 416
-confThrsh = 0.95
+confThrsh = 0.5#0.95
 NMSThrs = 0.3
 boolNothing = 0
 #The box bounderies....
@@ -37,6 +37,7 @@ XMAX = 0.38
 XMIN = 0.28
 YMAX = 0.137
 YMIN = -0.096
+boolcounter = 0
 # Font for puttext funcion
 font = cv2.FONT_HERSHEY_PLAIN
 
@@ -48,8 +49,8 @@ rospy.loginfo("Starting depth subscriber!")
 
 # Initialize the CvBridge class
 bridge = CvBridge()
-ERRORY = 75 #pxl
-ERRORX = -20
+ERRORY = 75#75 #pxl blue line 
+ERRORX = -10#-20#-10 #-20
 # Gets fps, uses average over 5 values
 def getFps(start, end, nrAvg):
     end = time.time()
@@ -63,6 +64,10 @@ def getFps(start, end, nrAvg):
     return np.average(fpsAvg), nrAvg, start, end
 
 def findObjects(frame,msg, aligned_info):
+    global boolNothing, boolcounter
+    boolNothing=0
+    shortestdist = 1
+    pub = rospy.Publisher('pandaposition', PoseStamped, queue_size=5)
     p = PoseStamped()
     p.header.frame_id = "/camera_color_frame" #"/panda_link8"
     blob = cv2.dnn.blobFromImage(frame, 1.0/255, (wh, wh), [0,0,0], 1, crop=False)
@@ -99,30 +104,66 @@ def findObjects(frame,msg, aligned_info):
         else:
             xx = int(x+(w/2))# Center point of object
             yy = int(y+(h/2))# Center point of object
-            cv2.rectangle(frame, (x,y), (x+w,y+h), (0,255,255), 2)
-            #cv2.putText(frame, f'{classNames[classIdx[i]].upper()} {conf[i]*100}%', (x,y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255, 255), 2)
             center = (xx,yy)
-            conftext = "conf:%.3f" %(conf[i]*100)
-            cv2.putText(frame,conftext,(x,y), font, 2,(255,0,0),2,cv2.LINE_4)
-            # Puts in a circle where the center of the object is 
-            cv2.circle(frame, center, 5, (255, 0, 0), 2)
+
             # Get the depth in mm
-            depth = convert_depth_image(msg, xx, yy)  
-            # convert depth to real
-            X,Y,Z = convert_depth_to_phys_coord_using_realsense((xx+ERRORX),(yy+ERRORY),depth,aligned_info) 
-            #disttext = "%Z:.3fm" %(Z)
-            #cv2.putText(frame,disttext,(xx,yy), font, 1,(255,100,255),2,cv2.LINE_4)
-            loctext = "X:%.3fm,Y:%.3fm, Z: %.3fm" %(X,Y,Z)
-            print(loctext)
-            cv2.putText(frame,loctext,(xx,yy-20), font, 1,(255,100,255),2,cv2.LINE_4)
-            #send to a topic
-            p.header.stamp = rospy.Time.now()
-            p.pose.position.x = X
-            p.pose.position.y = Y
-            p.pose.position.z = Z
-    if(p.pose.position.x != 0 or p.pose.position.y != 0 or p.pose.position.z != 0):
-        cv2.rectangle(frame, (x,y), (x+w,y+h), (255,255,255), 2)
-        return p
+            if(xx+ERRORX > 1080 or yy+ERRORY > 720):
+                continue
+            else:
+                depth = convert_depth_image(msg, xx+ERRORX, yy+ERRORY)  
+                
+                if(depth> 0.15):
+                    
+                    # Puts in a circle where the center of the object is 
+                    cv2.circle(frame, center, 5, (255, 0, 0), 2)
+                    cv2.rectangle(frame, (x,y), (x+w,y+h), (0,200,100), 1)
+                    boxsize = "w%d h:%d" %(w,h)
+                    curr = (x+20,y+20)
+                    #cv2.putText(frame,boxsize,curr, font, 1,(200,100,255),2,cv2.LINE_4)
+                    #disttext = "%Z:.3fm" %(Z)
+                    cv2.putText(frame,boxsize,(xx,yy), font, 1,(255,100,255),2,cv2.LINE_4)
+                    if(depth < shortestdist):
+                        shortestdist = depth
+                        # convert depth to real
+                        X,Y,Z = convert_depth_to_phys_coord_using_realsense((xx+ERRORX),(yy+ERRORY),depth,aligned_info) 
+                        currxx = xx
+                        curryy = yy
+                        conftext = "conf:%.3f" %(conf[i]*100)
+                        #send to a topic
+                        p.header.stamp = rospy.Time.now()
+                        p.pose.position.x = X
+                        p.pose.position.y = Y
+                        p.pose.position.z = Z
+                        p.pose.orientation.x = x #sending the x center of the box to robot
+                        p.pose.orientation.y = y #sending the y center of the box to robot
+                        p.pose.orientation.z = w #sending the width of the box to robot
+                        p.pose.orientation.w = h #sending the height of the box to robot
+    if((p.pose.position.x == 0 or p.pose.position.y == 0 or p.pose.position.z == 0) and boolNothing == 0):
+        boolcounter = boolcounter + 1
+        if(boolcounter > 30):
+            p.pose.position.x = 0
+            p.pose.position.y = 0
+            p.pose.position.z = 0
+            pub.publish(p)
+            if(boolcounter> 200):
+                boolcounter = 0
+            print("exit program")
+        rospy.logerr("Nothing found")
+    else:
+        try:
+            curr1 = (p.pose.orientation.x,p.pose.orientation.y)
+            curr2 = (p.pose.orientation.x+p.pose.orientation.z, p.pose.orientation.y+p.pose.orientation.w)
+            curr3 = (currxx,curryy-20)
+            cv2.rectangle(frame, curr1, curr2, (0,255,255), 2)
+            cv2.putText(frame,conftext,curr1, font, 2,(255,0,0),2,cv2.LINE_4)
+            loctext = "X:%.3fm,Y:%.3fm, Z: %.3fm" %(p.pose.position.x,p.pose.position.y,p.pose.position.z)
+            cv2.putText(frame,loctext,curr3, font, 1,(255,100,255),2,cv2.LINE_4)
+            pub.publish(p)
+            rospy.loginfo(p)
+            boolNothing = boolNothing +1 
+            boolcounter = 0
+        except:
+            rospy.logerr("Could not publish")
             
 
 # Gets fps, uses average over 5 values
@@ -180,7 +221,7 @@ def image_callback(img_msg):
     # log some info about the image topic
     #rospy.loginfo(img_msg.header)
     # Try to convert the ROS Image message to a CV2 Image
-    pub = rospy.Publisher('pandaposition', PoseStamped, queue_size=1)
+    
     rate = rospy.Rate(25) # 10hz#
     global timestart, timeend, nrAvg, counter, boolNothing
     aligned_depth_msg = rospy.wait_for_message("/camera/aligned_depth_to_color/image_raw", Image)
@@ -191,16 +232,9 @@ def image_callback(img_msg):
     except CvBridgeError as e:
         rospy.logerr("CvBridge Error: {0}".format(e))
     #Find x and y coordinates in pixels
-    pos = findObjects(cv_image, aligned_depth_msg, aligned_info) 
-    print("after find objects")
+    findObjects(cv_image, aligned_depth_msg, aligned_info) 
     #rospy.loginfo(pos)
-    try:
-        pub.publish(pos)
-        boolNothing = 0 
-    except:
-        boolNothing = boolNothing + 1
-        if(boolNothing == 1):
-            rospy.logerr("Nothing found")
+    
     # Time and fps calculated
     fps, nrAvg, timestart, timeend = getFps(timestart, timeend, nrAvg)
     hT, wT, c = cv_image.shape
@@ -208,31 +242,30 @@ def image_callback(img_msg):
     fpsText = "Fps:%.3f " %(fps)
     #print(fpsText)Q
     cv2.putText(cv_image,fpsText,(10,675), font, 2,(255,255,255),2,cv2.LINE_4)
-    framesize = "%.0fx%.0f" %(wT,hT)
-    #cv2.line(cv_image, (wT/2-10,hT/2), (wT/2+10,hT/2), (0,0,0), 1)
-    #cv2.line(cv_image, (wT/2,hT/2-10), (wT/2,hT/2+10), (0,0,0), 1)
-    #print(framesize)
+    framesize = "%.0fx%.0f" %(wT,hT
     cv2.putText(cv_image,framesize,(10,715), font, 2,(255,0,255),2,cv2.LINE_4)
     show_image(cv_image)
     cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
     # Show the image
     
-    #plt.show()
-    print("end of callback")
 # Class name
 classesFile = 'coco.names'
 classNames = []
 
 with open((path+classesFile), 'rt') as f:
     classNames = f.read().rstrip('\n').split('\n')
-#modelConfiguration ='/home/arono16/yolo-obj_new.cfg' #'yolov4.cfg' # 
-#modelWeights ='/home/arono16/results/yolo-obj_new_12000.weights'#'yolov4.weights' #
+modelConfiguration ='/home/arono16/yolo-obj_new.cfg' #'yolov4.cfg' # 
+#modelWeights ='/home/arono16/catkin_ws/src/neuralnet/yolov4.weights'
+#modelWeights ='/home/arono16/results/firstneuralnetwork/yolo-obj_new_38000.weights'
+modelWeights ='/home/arono16/results/secondneuralnetwork/yolo-obj_new_37000.weights'
+#modelWeights ='/home/arono16/results/yolo-obj_new_23000.weights'
+#modelWeights ='/home/arono16/results/v1multipleNetwork/yolo-obj_new_30000.weights'
 
-modelConfiguration ='yolov4.cfg' 
-modelWeights ='yolov4.weights' 
+#modelConfiguration ='yolov4.cfg' 
+#modelWeights ='yolov4.weights' 
 
-#net = cv2.dnn.readNet((modelConfiguration), (modelWeights))
-net = cv2.dnn.readNet((path+modelConfiguration), (path+modelWeights))
+net = cv2.dnn.readNet((modelConfiguration), (modelWeights))
+#net = cv2.dnn.readNet((path+modelConfiguration), (path+modelWeights))
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
 net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 

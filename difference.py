@@ -11,6 +11,7 @@ from skimage.measure import compare_ssim
 import matplotlib.pyplot as plt 
 import argparse
 import imutils
+import shutil
 # Font for puttext funcion
 font = cv2.FONT_HERSHEY_PLAIN
 #path = "/Users/Aron Gauti/Documents/meis-myndgreining/frames"
@@ -19,7 +20,7 @@ folder = "All_IMG" # skip 34 50 71 73 83 93
 #folder = "niveacleansingmilk300"
 #folder = "niveatexture70"
 item = ""
-path = "/home/lab/Pictures/data/"+ folder
+path = "/home/lab/Pictures/data/old/"+ folder
 textpath = "/home/lab/Pictures/"
 # for i in os
 cv_img = []
@@ -29,11 +30,13 @@ YCUT=60
 XCUT=180
 HCUT=600
 WCUT=940
-
+counter = 0
 def findDifference(imageA, imageB):
+    global counter
+    max_counter = 0
     # convert the images to grayscale
-    #imageA =cv_img[0]
-    #imageB =cv_img[1]
+    imageA = cv2.pyrMeanShiftFiltering(cv2.blur(imageA, (5,5)),3,3) #Filter to remove noise
+    imageB = cv2.pyrMeanShiftFiltering(cv2.blur(imageB, (5,5)),3,3) #Filter to remove noise
     grayA = cv2.cvtColor(imageA, cv2.COLOR_BGR2GRAY)
     grayB = cv2.cvtColor(imageB, cv2.COLOR_BGR2GRAY)
 
@@ -44,7 +47,7 @@ def findDifference(imageA, imageB):
     cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
     cv2.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
-
+    imagecopy = imageB.copy()
     # loop over the contours
     for c in cnts:
         # compute the bounding box of the contour and then draw the
@@ -52,13 +55,31 @@ def findDifference(imageA, imageB):
         # images differ
         area = cv2.contourArea(c)
         if area > 30000 and area < 80000:
-            (x, y, w, h) = cv2.boundingRect(c)
-            #cv2.rectangle(imageA, (x, y), (x + w, y + h), (0, 0, 255), 2)
-            cv2.rectangle(imageB, (x, y), (x + w, y + h), (0, 0, 255), 2)
-            #cv2.imshow("Modified", imageB)
-            diff = cv2.drawContours(imageB, cnts, -1, (0, 255, 0), 2)
-            #cv2.imshow("Diff", diff)
-            return(x, y, w ,h)
+            if area > max_counter:
+                cnt = c
+                max_counter = area
+
+    (x, y, w, h) = cv2.boundingRect(cnt)
+    perimeter = cv2.arcLength(cnt,True)
+    epsilon = 0.0005*cv2.arcLength(cnt,True)
+    print(epsilon)
+    approx = cv2.approxPolyDP(cnt,epsilon,False)
+    hull = cv2.convexHull(approx)
+    #cv2.rectangle(imageA, (x, y), (x + w, y + h), (0, 0, 255), 2)
+    cv2.rectangle(imageB, (x, y), (x + w, y + h), (0, 0, 255), 2)
+    #cv2.imshow("Modified", imageB)
+    diff = cv2.drawContours(imagecopy.copy(), cnt, -1, (0, 255, 0), 2)
+    mask = np.zeros(diff.shape, dtype='uint8')
+    testing1 = cv2.drawContours(mask.copy(), [approx], -1, (0, 0, 255), 3)
+    hull = cv2.drawContours(mask.copy(), [hull], -1, (0, 0, 255), 3)
+    cv2.imwrite(os.path.join(imgFolder2, str(counter) + "diff.png"), diff)
+    cv2.imwrite(os.path.join(imgFolder2, str(counter) + "img1.png"), testing1)
+    cv2.imwrite(os.path.join(imgFolder2, str(counter) + "img2.png"), imageB)
+    cv2.imwrite(os.path.join(imgFolder2, str(counter) + "img3.png"), imagecopy)
+    cv2.imwrite(os.path.join(imgFolder2, str(counter) + "hull.png"), hull)
+    counter = counter+1
+    #cv2.imshow("Diff", diff)
+    return(x, y, w ,h)
     # show the output images
     #cv2.imshow("Original", imageA)
     #cv2.imshow("Modified", imageB)
@@ -180,6 +201,7 @@ def main():
             #print("0 %.9f %.9f %.9f %.9f\r\n" % (float(X/width),float(Y/height),float(W/width),float(H/height)))
             #cv2.imwrite(os.path.join(imgFolder, imgname+"box.png"), img_copy)
             cv2.imwrite(os.path.join(imgFolder, imgname+".png"), retImage)
+            
             if((float(i)/float(len(cv_img)))<=0.75):
                 train.write(imgFolder + "/" +imgname + ".png\r\n")
             elif((float(i)/float(len(cv_img)))>0.75):
@@ -198,13 +220,37 @@ if __name__ == "__main__":
     # Create director
     dirName = path #+ "/" + str(today) 
     imgFolder = dirName + "/imgs" 
+    if os.path.exists(imgFolder):
+        shutil.rmtree(imgFolder)
+        print("File deleted")
+    else:
+        print("The file does not exist")
     try:
-        # Create target Directory
-        #os.mkdir(dirName)
         os.mkdir(imgFolder)
-        print("Directory created ") 
     except:
         print("Directory already exists") 
+    
+    imgFolder2 = dirName + "/masked" 
+    if os.path.exists(imgFolder2):
+        shutil.rmtree(imgFolder2)
+        print("File deleted")
+    else:
+        print("The file does not exist")
+    try: 
+        os.mkdir(imgFolder2)
+    except:
+        print("Directory already exists") 
+    if os.path.exists(path+"/listOfImagesTest.txt"):
+        os.remove(path+"/listOfImagesTest.txt")
+        print("File deleted")
+    else:
+        print("The file does not exist")
+    if os.path.exists(path+"/listOfImagesTrain.txt"):
+        os.remove(path+"/listOfImagesTrain.txt")
+        print("File deleted")
+    else:
+        print("The file does not exist")
+
     print("Start")
     main()
     end = time.time()

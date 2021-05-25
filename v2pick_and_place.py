@@ -47,10 +47,10 @@ moveit_commander.roscpp_initialize(sys.argv)
 bridge = CvBridge()
 
 image_color = "/camera/color/image_raw"
-folder_path = "/home/lab/Pictures/"
+folder_path = "/home/lab/Pictures/data"
 counter = 0
 error = 0.05 # error from the camera, since it is tilted
-suctionCup = 0.14#0.045 #decreas if want to go further down 0.034 length from endeffector to end of suction cup red suction 5.5cm
+suctionCup = 0.13#0.045 #decreas if want to go further down 0.034 length from endeffector to end of suction cup red suction 5.5cm
 dropSpace = 0.015
 # green 4.5cm
 def endPos(msg,rot): 
@@ -99,7 +99,6 @@ def captureImage(currentbox):
     counter = counter+1
 
 def homePos():
-    print("home pos")
     group.clear_pose_targets()
     group_variable_values = group.get_current_joint_values()
     group_variable_values[0] = float(radians(0))
@@ -118,7 +117,7 @@ def moveAbove(pose_target):
     captureImage(currbox)
     before = pose_target.position.z
     
-    pose_target.position.z = 0.20 + suctionCup
+    pose_target.position.z = before + 0.1
     group.set_pose_target(pose_target)
     plan1 = group.plan()
     group.go(wait=True)
@@ -126,7 +125,7 @@ def moveAbove(pose_target):
     pressure = rospy.wait_for_message("/vacuum/pressure", Float32)
     pubSuc.publish(Bool(True))
     while(pressure.data > -0.1):
-        if pose_target.position.z < 0.025+suctionCup or downspace > 0.035:
+        if pose_target.position.z < 0.16 or downspace > 0.04:
             homePos()
             rospy.sleep(0.3)
             pressure = rospy.wait_for_message("/vacuum/pressure", Float32)
@@ -138,11 +137,15 @@ def moveAbove(pose_target):
             group.set_pose_target(pose_target)
             plan1 = group.plan()
             group.go(wait=True)
-            downspace = downspace + 0.003
+            downspace = downspace + 0.0015
         pressure = rospy.wait_for_message("/vacuum/pressure", Float32)
         
         
-    
+    pose_target.position.z = before + 0.10
+    group.set_pose_target(pose_target)
+    plan1 = group.plan()
+    group.go(wait=True)
+
     pose_target.position.z = before+downspace
     return 1
 
@@ -159,10 +162,11 @@ def moveToOtherBox(currpos): #move the item that is picked to a "locked" locatio
     plan1 = group.plan()
     group.go(wait=True)
     pubSuc.publish(Bool(False))
+ 
 
 def stateMachine(currState):
     global endPosition, start, currbox, dirName
-    if currState == 0:
+    if currState == 0: #The first state starts by creating a new directory to save the images.
         folder = ""
         print("Create new dir")
         folder = raw_input("Folder name\n") # user creates a folder
@@ -175,14 +179,15 @@ def stateMachine(currState):
         except:
             print("Directory " , dirName ,  " already exists") 
         return 1
-    elif currState == 1:
-        #captureImage("")
+    elif currState == 1: # The second state waits until the user wants coordinates by entering the desired number. 
         value = 0
         while value != 2: 
             value = input("Enter 2 to get coordinates:\n")
             value = int(value)
         return value
     elif currState == 2: 
+        # The third state waits for a message from the find\_pickpoint.py through a ROS topic where it gets an object position from the camera, 
+        # and then the TF listener transforms the object position in camera coordinates to world coordinates.
         currPoint=PointStamped()
         currPoint.header.frame_id = "panda_suction_end"
         home = listener.transformPoint("panda_link0",currPoint)
@@ -201,7 +206,6 @@ def stateMachine(currState):
                 else: 
                     emptycount = 0
                     return 3
-                #print(endPosition)
             except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                 print("look up fail")    
         else:
@@ -209,6 +213,10 @@ def stateMachine(currState):
             return 2
 
     elif currState == 3:
+        # The fourth state starts by taking an image of the bin before moving above the object, 
+        # it then turns on the suction and slowly goes down to the object.  
+        #The fourth state finishes when the suction pressure increases and that means the suction cup has picked up the object 
+        # and then moves to a fixed home position.
         start = time.time()
         pick=moveAbove(endPosition)
         if pick == 0:
@@ -216,9 +224,11 @@ def stateMachine(currState):
         rospy.sleep(0.2)
         homePos()
         return 4
-        #stateMachine(4)        
         
     elif currState == 4:
+        # The fifth state moves the object above another bin, drops it, and ends by going to a fixed home position. 
+        # When the fifth state has finished and there are items in the bin it goes back to the third state, 
+        # but if the bin is empty it goes to the sixth state.
         moveToOtherBox(endPosition)
         homePos()
         rospy.sleep(2)
@@ -226,10 +236,9 @@ def stateMachine(currState):
         rospy.loginfo("TIME:")
         rospy.loginfo(end - start)
         return 2
-    elif currState == 5:
-        print(currState)
     elif currState == 6:
-        print(currState)
+        # The sixth state takes an image of an empty bin and waits until the user wants to start
+        # again with new items in the bin and then goes to the first state again. 
         exitstate = -1
         homePos()
         pubSuc.publish(Bool(False))
@@ -241,7 +250,6 @@ def stateMachine(currState):
         return 0
         
         
-
 if __name__ == '__main__':
     emptycount = 0
     #rostopic pub  std_msgs/Bool true --once
